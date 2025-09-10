@@ -124,19 +124,19 @@ async def dashboard_ui(request: Request):
 
 
 @app.get("/api/status", response_model=StatusResponse)
-async def get_status(current_user: User = Depends(get_current_user)):
+def get_status(current_user: User = Depends(get_current_user)):
     """Get current dashboard status"""
     return dashboard_controller._get_status()
 
 
 @app.get("/api/config")
-async def get_config(current_user: User = Depends(get_current_user)):
+def get_config(current_user: User = Depends(get_current_user)):
     """Get current configuration"""
     return config_manager.get_config()
 
 
 @app.post("/api/config")
-async def update_config(request: ConfigUpdateRequest, current_user: User = Depends(get_current_user)):
+def update_config(request: ConfigUpdateRequest, current_user: User = Depends(get_current_user)):
     """Update dashboard configuration"""
     try:
         config_manager.save_config(request.config)
@@ -146,7 +146,7 @@ async def update_config(request: ConfigUpdateRequest, current_user: User = Depen
 
 
 @app.post("/api/control")
-async def control_dashboard(request: ControlRequest, current_user: User = Depends(get_current_user)):
+def control_dashboard(request: ControlRequest, current_user: User = Depends(get_current_user)):
     """Control dashboard (start/stop/pause/resume)"""
     action = request.action.lower()
 
