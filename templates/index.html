@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Controller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800 mb-2">Dashboard Controller</h1>
+                <p class="text-gray-600">Manage your automated dashboard display</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span class="text-sm text-gray-600">Welcome, {{ user.full_name or user.username }}</span>
+                <button id="logout-btn" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">
+                    Logout
+                </button>
+            </div>
+        </header>
+
+        <!-- Status Section -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Status</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-gray-50 p-4 rounded">
+                    <div class="text-sm text-gray-600">Status</div>
+                    <div class="text-lg font-semibold" id="status-text">
+                        {{ "Running" if status.is_running else "Stopped" }}
+                    </div>
+                </div>
+                <div class="bg-gray-50 p-4 rounded">
+                    <div class="text-sm text-gray-600">Current Page</div>
+                    <div class="text-lg font-semibold" id="current-page">
+                        {% if status.current_page %}
+                            {{ status.current_page.name or status.current_page.url }}
+                        {% else %}
+                            None
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="bg-gray-50 p-4 rounded">
+                    <div class="text-sm text-gray-600">Time Remaining</div>
+                    <div class="text-lg font-semibold" id="time-remaining">
+                        {% if status.time_remaining %}
+                            {{ status.time_remaining }}s
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Buttons -->
+            <div class="mt-4 flex gap-2">
+                <button id="start-btn" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded {{ 'opacity-50 cursor-not-allowed' if status.is_running else '' }}">
+                    Start Dashboard
+                </button>
+                <button id="stop-btn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded {{ 'opacity-50 cursor-not-allowed' if not status.is_running else '' }}">
+                    Stop Dashboard
+                </button>
+            </div>
+        </div>
+
+        <!-- Configuration Section -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">Configuration</h2>
+
+            <div id="pages-list" class="space-y-4">
+                {% for page in config.pages %}
+                <div class="border border-gray-200 rounded p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Name</label>
+                            <input type="text" value="{{ page.name or '' }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">URL</label>
+                            <input type="url" value="{{ page.url }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Duration (seconds)</label>
+                            <input type="number" value="{{ page.duration_seconds }}" min="5" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="mt-4 flex gap-2">
+                <button id="add-page-btn" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                    Add Page
+                </button>
+                <button id="save-config-btn" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">
+                    Save Configuration
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Status update function
+        async function updateStatus() {
+            try {
+                const response = await authenticatedFetch('/api/status');
+                const status = await response.json();
+
+                document.getElementById('status-text').textContent = status.is_running ? 'Running' : 'Stopped';
+                document.getElementById('current-page').textContent = status.current_page ? (status.current_page.name || status.current_page.url) : 'None';
+                document.getElementById('time-remaining').textContent = status.time_remaining ? `${status.time_remaining}s` : 'N/A';
+
+                // Update button states
+                const startBtn = document.getElementById('start-btn');
+                const stopBtn = document.getElementById('stop-btn');
+
+                if (status.is_running) {
+                    startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    stopBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    stopBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+                if (error.message === 'Unauthorized') {
+                    redirectToLogin();
+                }
+            }
+        }
+
+        // Control functions
+        async function controlDashboard(action) {
+            try {
+                const response = await authenticatedFetch('/api/control', {
+                    method: 'POST',
+                    body: JSON.stringify({ action: action }),
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(result.message);
+                    updateStatus();
+                } else {
+                    const error = await response.json();
+                    alert('Error: ' + error.detail);
+                }
+            } catch (error) {
+                console.error('Error controlling dashboard:', error);
+                if (error.message === 'Unauthorized') {
+                    redirectToLogin();
+                } else {
+                    alert('Error controlling dashboard');
+                }
+            }
+        }
+
+        // Helper function for authenticated requests
+        async function authenticatedFetch(url, options = {}) {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                redirectToLogin();
+                throw new Error('No token found');
+            }
+
+            const defaultOptions = {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
+            };
+
+            const response = await fetch(url, { ...defaultOptions, ...options });
+
+            if (response.status === 401) {
+                // Token expired or invalid
+                localStorage.removeItem('access_token');
+                redirectToLogin();
+                throw new Error('Unauthorized');
+            }
+
+            return response;
+        }
+
+        function redirectToLogin() {
+            window.location.href = '/login';
+        }
+
+        // Logout function
+        function logout() {
+            localStorage.removeItem('access_token');
+            redirectToLogin();
+        }
+
+        // Event listeners
+        document.getElementById('start-btn').addEventListener('click', () => controlDashboard('start'));
+        document.getElementById('stop-btn').addEventListener('click', () => controlDashboard('stop'));
+        document.getElementById('logout-btn').addEventListener('click', logout);
+
+        // Check authentication on page load
+        function checkAuthentication() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                // No token found, redirect to login
+                redirectToLogin();
+                return false;
+            }
+
+            // Verify token is still valid by making a test request
+            fetch('/api/status', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            }).then(response => {
+                if (!response.ok) {
+                    // Token is invalid or expired
+                    localStorage.removeItem('access_token');
+                    redirectToLogin();
+                    return false;
+                }
+                return true;
+            }).catch(() => {
+                // Network error or other issue
+                localStorage.removeItem('access_token');
+                redirectToLogin();
+                return false;
+            });
+
+            return true;
+        }
+
+        // Initialize page
+        if (checkAuthentication()) {
+            // User is authenticated, update status every 5 seconds
+            setInterval(updateStatus, 5000);
+            // Initial status update
+            updateStatus();
+        }
+    </script>
+</body>
+</html>
