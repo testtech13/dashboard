@@ -45,7 +45,13 @@
                     <div class="text-sm text-gray-600">Time Remaining</div>
                     <div class="text-lg font-semibold" id="time-remaining">
                         {% if status.time_remaining %}
-                            {{ status.time_remaining }}s
+                            {% set minutes = (status.time_remaining / 60)|int %}
+                            {% set seconds = (status.time_remaining % 60)|int %}
+                            {% if status.time_remaining >= 60 %}
+                                {{ minutes }}:{{ "%02d"|format(seconds) }}
+                            {% else %}
+                                {{ status.time_remaining|int }}s
+                            {% endif %}
                         {% else %}
                             N/A
                         {% endif %}
@@ -71,6 +77,10 @@
             <div id="pages-list" class="space-y-4">
                 {% for page in config.pages %}
                 <div class="border border-gray-200 rounded p-4">
+                    <div class="flex justify-between items-start mb-4">
+                        <h4 class="text-sm font-medium text-gray-700">Page {{ loop.index }}</h4>
+                        <button onclick="deletePage(this)" class="text-red-500 hover:text-red-700 text-sm">Delete</button>
+                    </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Name</label>
@@ -109,7 +119,20 @@
 
                 document.getElementById('status-text').textContent = status.is_running ? 'Running' : 'Stopped';
                 document.getElementById('current-page').textContent = status.current_page ? (status.current_page.name || status.current_page.url) : 'None';
-                document.getElementById('time-remaining').textContent = status.time_remaining ? `${status.time_remaining}s` : 'N/A';
+
+                // Format time remaining
+                if (status.time_remaining !== null && status.time_remaining !== undefined) {
+                    const remaining = Math.ceil(status.time_remaining);
+                    if (remaining >= 60) {
+                        const minutes = Math.floor(remaining / 60);
+                        const seconds = remaining % 60;
+                        document.getElementById('time-remaining').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                    } else {
+                        document.getElementById('time-remaining').textContent = `${remaining}s`;
+                    }
+                } else {
+                    document.getElementById('time-remaining').textContent = 'N/A';
+                }
 
                 // Update button states
                 const startBtn = document.getElementById('start-btn');
@@ -194,10 +217,100 @@
             redirectToLogin();
         }
 
+        // Add page function
+        function addPage() {
+            const pagesList = document.getElementById('pages-list');
+            const newPageHtml = `
+                <div class="border border-gray-200 rounded p-4">
+                    <div class="flex justify-between items-start mb-4">
+                        <h4 class="text-sm font-medium text-gray-700">New Page</h4>
+                        <button onclick="deletePage(this)" class="text-red-500 hover:text-red-700 text-sm">Delete</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Name</label>
+                            <input type="text" placeholder="Page Name" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">URL</label>
+                            <input type="url" placeholder="https://example.com" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Duration (seconds)</label>
+                            <input type="number" placeholder="30" min="5" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                    </div>
+                </div>
+            `;
+            pagesList.insertAdjacentHTML('beforeend', newPageHtml);
+        }
+
+        // Delete page function
+        function deletePage(button) {
+            if (confirm('Are you sure you want to delete this page?')) {
+                button.closest('.border').remove();
+            }
+        }
+
+        // Save configuration function
+        async function saveConfiguration() {
+            try {
+                const pages = [];
+                const pageElements = document.querySelectorAll('#pages-list > div');
+
+                pageElements.forEach(pageElement => {
+                    const inputs = pageElement.querySelectorAll('input');
+                    const name = inputs[0].value.trim();
+                    const url = inputs[1].value.trim();
+                    const duration = parseInt(inputs[2].value);
+
+                    if (url && duration >= 5) {
+                        pages.push({
+                            name: name || null,
+                            url: url,
+                            duration_seconds: duration
+                        });
+                    }
+                });
+
+                if (pages.length === 0) {
+                    alert('Please add at least one page with a valid URL and duration.');
+                    return;
+                }
+
+                const config = {
+                    pages: pages,
+                    loop: true,
+                    auto_start: false
+                };
+
+                const response = await authenticatedFetch('/api/config', {
+                    method: 'POST',
+                    body: JSON.stringify({ config: config })
+                });
+
+                if (response.ok) {
+                    alert('Configuration saved successfully!');
+                } else {
+                    const error = await response.json();
+                    alert('Error saving configuration: ' + error.detail);
+                }
+            } catch (error) {
+                console.error('Error saving configuration:', error);
+                if (error.message === 'Unauthorized') {
+                    redirectToLogin();
+                } else {
+                    alert('Error saving configuration');
+                }
+            }
+        }
+
         // Event listeners
         document.getElementById('start-btn').addEventListener('click', () => controlDashboard('start'));
         document.getElementById('stop-btn').addEventListener('click', () => controlDashboard('stop'));
         document.getElementById('logout-btn').addEventListener('click', logout);
+        document.getElementById('add-page-btn').addEventListener('click', addPage);
+        document.getElementById('save-config-btn').addEventListener('click', saveConfiguration);
 
         // Check authentication on page load
         function checkAuthentication() {

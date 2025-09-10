@@ -18,6 +18,7 @@ class DashboardController:
         self.config: Optional[DashboardConfig] = None
         self.status_callback: Optional[Callable] = None
         self.logger = logging.getLogger(__name__)
+        self.page_start_time: Optional[float] = None  # Track when current page started
 
     def set_status_callback(self, callback: Callable):
         """Set callback for status updates"""
@@ -43,6 +44,7 @@ class DashboardController:
     def stop_dashboard(self):
         """Stop the dashboard"""
         self.is_running = False
+        self.page_start_time = None  # Reset page start time
         if self.driver:
             try:
                 self.driver.quit()
@@ -70,12 +72,49 @@ class DashboardController:
         chrome_options.add_argument("--disable-web-security")
         chrome_options.add_argument("--allow-running-insecure-content")
 
-        # Additional options to make it look more like a regular browser
+        # Disable Google services that cause registration errors
+        chrome_options.add_argument("--disable-background-networking")
+        chrome_options.add_argument("--disable-background-timer-throttling")
+        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--disable-renderer-backgrounding")
+        chrome_options.add_argument("--disable-features=TranslateUI")
+        chrome_options.add_argument("--disable-ipc-flooding-protection")
+        chrome_options.add_argument("--disable-hang-monitor")
+        chrome_options.add_argument("--disable-prompt-on-repost")
+        chrome_options.add_argument("--force-fieldtrials=*BackgroundNetworking/Disabled/")
+        chrome_options.add_argument("--metrics-recording-only")
+        chrome_options.add_argument("--no-first-run")
+        chrome_options.add_argument("--disable-sync")
+        chrome_options.add_argument("--disable-translate")
+        chrome_options.add_argument("--hide-scrollbars")
+        chrome_options.add_argument("--metrics-recording-only")
+        chrome_options.add_argument("--mute-audio")
+        chrome_options.add_argument("--no-default-browser-check")
+        chrome_options.add_argument("--disable-component-update")
+        chrome_options.add_argument("--disable-domain-reliability")
+        chrome_options.add_argument("--disable-client-side-phishing-detection")
+        chrome_options.add_argument("--disable-component-extensions-with-background-pages")
+
+        # Additional stealth options to make it look more like a regular browser
         chrome_options.add_argument("--disable-features=VizDisplayCompositor")
         chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        chrome_options.add_argument("--disable-blink-features")
+        chrome_options.add_argument("--disable-features=VizDisplayCompositor,VizHitTestSurfaceLayer")
+        chrome_options.add_argument("--disable-popup-blocking")
+        chrome_options.add_argument("--disable-notifications")
+        chrome_options.add_argument("--disable-background-media-download")
+        chrome_options.add_argument("--disable-print-preview")
+        chrome_options.add_argument("--disable-component-cloud-policy")
+        chrome_options.add_argument("--disable-hang-monitor")
+        chrome_options.add_argument("--disable-prompt-on-repost")
 
-        # Experimental options to hide automation
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        # Suppress logging and errors
+        chrome_options.add_argument("--log-level=3")  # Only show fatal errors
+        chrome_options.add_argument("--silent")
+        chrome_options.add_argument("--disable-logging")
+
+        # Experimental options to hide automation (combine with logging exclusion)
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
         chrome_options.add_experimental_option("useAutomationExtension", False)
 
         # Specify ChromeDriver path (uncomment and modify if needed)
@@ -88,7 +127,33 @@ class DashboardController:
             self.driver = webdriver.Chrome(options=chrome_options)
 
             # Execute JavaScript to remove automation indicators
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            self.driver.execute_script("""
+                // Hide webdriver property
+                try {
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+                } catch (e) {
+                    // Property might already be defined, continue
+                }
+
+                // Mock languages and plugins
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en'],
+                });
+
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5],
+                });
+
+                // Mock permissions
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                    Promise.resolve({ state: Notification.permission }) :
+                    originalQuery(parameters)
+                );
+            """)
 
             self.logger.info("Chrome driver initialized successfully")
         except WebDriverException as e:
@@ -103,6 +168,9 @@ class DashboardController:
         try:
             page = self.config.pages[self.current_page_index]
             self.logger.info(f"Loading page: {page.url}")
+
+            # Record when this page started
+            self.page_start_time = time.time()
 
             self.driver.get(page.url)
 
@@ -147,8 +215,16 @@ class DashboardController:
 
         if self.is_running and self.current_page_index < len(self.config.pages):
             current_page = self.config.pages[self.current_page_index]
-            # This is approximate - in a real implementation you'd track actual time
-            time_remaining = current_page.duration_seconds
+
+            # Calculate actual remaining time
+            if self.page_start_time is not None:
+                elapsed_time = time.time() - self.page_start_time
+                # Account for the 2-second page load delay
+                adjusted_elapsed = max(0, elapsed_time - 2)
+                time_remaining = max(0, int(current_page.duration_seconds - adjusted_elapsed))
+            else:
+                # Fallback to full duration if start time not available
+                time_remaining = current_page.duration_seconds
 
         return StatusResponse(
             is_running=self.is_running,

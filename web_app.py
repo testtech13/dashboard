@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import asyncio
 import threading
+import time  # Add this import for time.sleep
 from main import dashboard_controller
 from config import config_manager
 from models import DashboardConfig, ConfigUpdateRequest, ControlRequest, StatusResponse, LoginRequest, Token, User
@@ -170,7 +171,7 @@ def run_dashboard_loop():
     """Run dashboard cycle in a loop"""
     while dashboard_controller.is_running:
         dashboard_controller.run_cycle()
-        asyncio.sleep(1)  # Small delay between cycles
+        time.sleep(1)  # Small delay between cycles
 
 
 @app.on_event("startup")
