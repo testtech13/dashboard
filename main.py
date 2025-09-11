@@ -1,18 +1,25 @@
 import time
 import logging
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import WebDriverException
-from typing import Optional, Callable
+from typing import Optional, Callable, Union
 from config import config_manager
 from models import DashboardConfig, PageConfig, StatusResponse
 from datetime import datetime
 
+# Browser selection constant - change this to "firefox" to use Firefox instead of Chrome
+BROWSER_TYPE = "chrome"  # Options: "chrome" or "firefox"
+
+# To use Firefox instead, simply change the line above to:
+# BROWSER_TYPE = "firefox"
+
 
 class DashboardController:
     def __init__(self):
-        self.driver: Optional[webdriver.Chrome] = None
+        self.driver: Optional[Union[webdriver.Chrome, webdriver.Firefox]] = None
         self.is_running = False
         self.current_page_index = 0
         self.config: Optional[DashboardConfig] = None
@@ -54,8 +61,15 @@ class DashboardController:
         self.logger.info("Dashboard stopped")
 
     def _setup_driver(self):
+        """Setup browser driver with full-screen options"""
+        if BROWSER_TYPE.lower() == "firefox":
+            self._setup_firefox_driver()
+        else:
+            self._setup_chrome_driver()
+
+    def _setup_chrome_driver(self):
         """Setup Chrome driver with full-screen options"""
-        chrome_options = Options()
+        chrome_options = ChromeOptions()
 
         # Full-screen and display options
         chrome_options.add_argument("--kiosk")  # Full-screen mode
@@ -117,48 +131,115 @@ class DashboardController:
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
         chrome_options.add_experimental_option("useAutomationExtension", False)
 
-        # Specify ChromeDriver path (uncomment and modify if needed)
-        # chromedriver_path = r"chromedriver-win64\chromedriver-win64\chromedriver.exe"
-        # service = webdriver.ChromeService(executable_path=chromedriver_path)
-
         try:
-            # Use service parameter if chromedriver_path is specified above
-            # self.driver = webdriver.Chrome(service=service, options=chrome_options)
             self.driver = webdriver.Chrome(options=chrome_options)
-
-            # Execute JavaScript to remove automation indicators
-            self.driver.execute_script("""
-                // Hide webdriver property
-                try {
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined,
-                    });
-                } catch (e) {
-                    // Property might already be defined, continue
-                }
-
-                // Mock languages and plugins
-                Object.defineProperty(navigator, 'languages', {
-                    get: () => ['en-US', 'en'],
-                });
-
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5],
-                });
-
-                // Mock permissions
-                const originalQuery = window.navigator.permissions.query;
-                window.navigator.permissions.query = (parameters) => (
-                    parameters.name === 'notifications' ?
-                    Promise.resolve({ state: Notification.permission }) :
-                    originalQuery(parameters)
-                );
-            """)
-
+            self._apply_stealth_javascript()
             self.logger.info("Chrome driver initialized successfully")
         except WebDriverException as e:
             self.logger.error(f"Failed to initialize Chrome driver: {e}")
             raise
+
+    def _setup_firefox_driver(self):
+        """Setup Firefox driver with full-screen options"""
+        firefox_options = FirefoxOptions()
+
+        # Full-screen and display options
+        firefox_options.add_argument("--kiosk")  # Full-screen mode
+        firefox_options.add_argument("--start-maximized")  # Start maximized
+
+        # Disable automation indicators and enhance stealth
+        firefox_options.set_preference("dom.webdriver.enabled", False)
+        firefox_options.set_preference("useAutomationExtension", False)
+        firefox_options.set_preference("general.useragent.override",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0")
+
+        # Disable various Firefox features for stealth
+        firefox_options.set_preference("browser.safebrowsing.enabled", False)
+        firefox_options.set_preference("browser.safebrowsing.malware.enabled", False)
+        firefox_options.set_preference("browser.safebrowsing.phishing.enabled", False)
+        firefox_options.set_preference("browser.safebrowsing.blockedURIs.enabled", False)
+        firefox_options.set_preference("browser.safebrowsing.downloads.enabled", False)
+        firefox_options.set_preference("browser.safebrowsing.downloads.remote.enabled", False)
+
+        # Disable telemetry and data collection
+        firefox_options.set_preference("datareporting.healthreport.uploadEnabled", False)
+        firefox_options.set_preference("datareporting.policy.dataSubmissionEnabled", False)
+        firefox_options.set_preference("toolkit.telemetry.enabled", False)
+        firefox_options.set_preference("toolkit.telemetry.unified", False)
+        firefox_options.set_preference("toolkit.telemetry.archive.enabled", False)
+
+        # Disable notifications and popups
+        firefox_options.set_preference("dom.webnotifications.enabled", False)
+        firefox_options.set_preference("dom.popup_allowed_events", "")
+
+        # Disable extensions and plugins detection
+        firefox_options.set_preference("plugin.scan.plid.all", False)
+        firefox_options.set_preference("plugin.scan.Acrobat", "0.0.0")
+        firefox_options.set_preference("plugin.scan.Quicktime", "0.0.0")
+        firefox_options.set_preference("plugin.scan.WindowsMediaPlayer", "0.0.0")
+
+        # Disable password manager and form autofill
+        firefox_options.set_preference("signon.autofillForms", False)
+        firefox_options.set_preference("signon.rememberSignons", False)
+
+        # Set homepage to blank
+        firefox_options.set_preference("browser.startup.homepage", "about:blank")
+
+        # Disable first run page
+        firefox_options.set_preference("startup.homepage_welcome_url", "")
+        firefox_options.set_preference("startup.homepage_welcome_url.additional", "")
+
+        # Disable update checks
+        firefox_options.set_preference("app.update.enabled", False)
+        firefox_options.set_preference("app.update.auto", False)
+        firefox_options.set_preference("app.update.mode", 0)
+        firefox_options.set_preference("app.update.service.enabled", False)
+
+        # Disable crash reporting
+        firefox_options.set_preference("browser.crashReports.unsubmittedCheck.enabled", False)
+        firefox_options.set_preference("browser.crashReports.unsubmittedCheck.autoSubmit", False)
+        firefox_options.set_preference("browser.crashReports.unsubmittedCheck.autoSubmit2", False)
+
+        try:
+            self.driver = webdriver.Firefox(options=firefox_options)
+            self._apply_stealth_javascript()
+            self.logger.info("Firefox driver initialized successfully")
+        except WebDriverException as e:
+            self.logger.error(f"Failed to initialize Firefox driver: {e}")
+            raise
+
+    def _apply_stealth_javascript(self):
+        """Apply JavaScript stealth modifications to hide automation indicators"""
+        if not self.driver:
+            return
+
+        self.driver.execute_script("""
+            // Hide webdriver property
+            try {
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined,
+                });
+            } catch (e) {
+                // Property might already be defined, continue
+            }
+
+            // Mock languages and plugins
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en'],
+            });
+
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5],
+            });
+
+            // Mock permissions
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+            );
+        """)
 
     def run_cycle(self):
         """Run the dashboard cycle"""

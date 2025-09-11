@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException, Depends, status, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import asyncio
@@ -14,9 +13,6 @@ from datetime import timedelta
 
 
 app = FastAPI(title="Dashboard Controller", description="Web interface for dashboard management")
-
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Setup templates
 templates = Jinja2Templates(directory="templates")
