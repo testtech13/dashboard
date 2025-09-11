@@ -2,7 +2,8 @@ import time
 import logging
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import WebDriverException
 from typing import Optional, Callable, Union
@@ -12,9 +13,6 @@ from datetime import datetime
 
 # Browser selection constant - change this to "firefox" to use Firefox instead of Chrome
 BROWSER_TYPE = "chrome"  # Options: "chrome" or "firefox"
-
-# To use Firefox instead, simply change the line above to:
-# BROWSER_TYPE = "firefox"
 
 
 class DashboardController:
@@ -141,69 +139,21 @@ class DashboardController:
 
     def _setup_firefox_driver(self):
         """Setup Firefox driver with full-screen options"""
-        firefox_options = FirefoxOptions()
+        gecko_driver_path = '/usr/local/bin/geckodriver'
+        service = Service(executable_path=gecko_driver_path)
+        options = Options()
 
         # Full-screen and display options
-        firefox_options.add_argument("--kiosk")  # Full-screen mode
-        firefox_options.add_argument("--start-maximized")  # Start maximized
-
-        # Disable automation indicators and enhance stealth
-        firefox_options.set_preference("dom.webdriver.enabled", False)
-        firefox_options.set_preference("useAutomationExtension", False)
-        firefox_options.set_preference("general.useragent.override",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0")
-
-        # Disable various Firefox features for stealth
-        firefox_options.set_preference("browser.safebrowsing.enabled", False)
-        firefox_options.set_preference("browser.safebrowsing.malware.enabled", False)
-        firefox_options.set_preference("browser.safebrowsing.phishing.enabled", False)
-        firefox_options.set_preference("browser.safebrowsing.blockedURIs.enabled", False)
-        firefox_options.set_preference("browser.safebrowsing.downloads.enabled", False)
-        firefox_options.set_preference("browser.safebrowsing.downloads.remote.enabled", False)
-
-        # Disable telemetry and data collection
-        firefox_options.set_preference("datareporting.healthreport.uploadEnabled", False)
-        firefox_options.set_preference("datareporting.policy.dataSubmissionEnabled", False)
-        firefox_options.set_preference("toolkit.telemetry.enabled", False)
-        firefox_options.set_preference("toolkit.telemetry.unified", False)
-        firefox_options.set_preference("toolkit.telemetry.archive.enabled", False)
-
-        # Disable notifications and popups
-        firefox_options.set_preference("dom.webnotifications.enabled", False)
-        firefox_options.set_preference("dom.popup_allowed_events", "")
-
-        # Disable extensions and plugins detection
-        firefox_options.set_preference("plugin.scan.plid.all", False)
-        firefox_options.set_preference("plugin.scan.Acrobat", "0.0.0")
-        firefox_options.set_preference("plugin.scan.Quicktime", "0.0.0")
-        firefox_options.set_preference("plugin.scan.WindowsMediaPlayer", "0.0.0")
-
-        # Disable password manager and form autofill
-        firefox_options.set_preference("signon.autofillForms", False)
-        firefox_options.set_preference("signon.rememberSignons", False)
-
-        # Set homepage to blank
-        firefox_options.set_preference("browser.startup.homepage", "about:blank")
-
-        # Disable first run page
-        firefox_options.set_preference("startup.homepage_welcome_url", "")
-        firefox_options.set_preference("startup.homepage_welcome_url.additional", "")
-
-        # Disable update checks
-        firefox_options.set_preference("app.update.enabled", False)
-        firefox_options.set_preference("app.update.auto", False)
-        firefox_options.set_preference("app.update.mode", 0)
-        firefox_options.set_preference("app.update.service.enabled", False)
-
-        # Disable crash reporting
-        firefox_options.set_preference("browser.crashReports.unsubmittedCheck.enabled", False)
-        firefox_options.set_preference("browser.crashReports.unsubmittedCheck.autoSubmit", False)
-        firefox_options.set_preference("browser.crashReports.unsubmittedCheck.autoSubmit2", False)
+        options.add_argument("--kiosk")  # Full-screen mode
+        options.add_argument("--start-maximized")  # Start maximized
 
         try:
-            self.driver = webdriver.Firefox(options=firefox_options)
-            self._apply_stealth_javascript()
+            self.driver = webdriver.Firefox(service=service, options=options)
             self.logger.info("Firefox driver initialized successfully")
+        except WebDriverException as e:
+            self.logger.error(f"Failed to initialize Firefox driver: {e}")
+
+            raise
         except WebDriverException as e:
             self.logger.error(f"Failed to initialize Firefox driver: {e}")
             raise
@@ -319,3 +269,4 @@ class DashboardController:
 
 # Global dashboard controller instance
 dashboard_controller = DashboardController()
+
